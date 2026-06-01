@@ -3,4 +3,6 @@
 !/input.txt
 !/requirements.txt
 !/README.md
+!/run.bat
+!/run.sh
 !/.gitignore
