@@ -2,9 +2,6 @@ import os
 import math
 import numpy as np
 import matplotlib.pyplot as plt
-import ezdxf
-from ezdxf import units
-from ezdxf.math import Vec2
 
 
 class DieselEngine:
@@ -302,22 +299,6 @@ class DieselEngine:
         plt.tight_layout()
         plt.savefig('svg/indicator_diagram.svg', dpi=150)
 
-        # DXF
-        ip_max = max(p_arr.max(), pz) * 1.1
-        ip_pts = {
-            "a": (Va, pa), "c": (Vc, pc),
-            "z'": (Vc, pz), "z''": (Vz, pz),
-            "b": (Va, pb), "r": (Vc, pr),
-        }
-        _save_dxf('dxf/indicator_diagram.dxf', [
-            ("cycle", V_plot, p_plot, 5),
-            ("line_pr", [Va, Vc], [pr, pr], 7),
-            ("line_pa", [Vc, Va], [pa, pa], 7),
-        ], xr=(0, Va * 1.05), yr=(0, ip_max),
-           rect=(10, 10, 200, 150),
-           x_lab='Объем V, л', y_lab='Давление p, МПа',
-           title='Индикаторная диаграмма', points=ip_pts)
-
     def _gen_pressure_curve(self):
         """p(α) с шагом 1° — аналитически со скруглениями сгорания, свободного выпуска и перекрытия клапанов."""
         d = self.data
@@ -456,19 +437,6 @@ class DieselEngine:
 
         plt.tight_layout()
         plt.savefig('svg/dynamic_forces.svg', dpi=150)
-        dyn_all = np.concatenate([dn['P_r'], dn['P_j'], dn['P_sigma'],
-                                  dn['T'], dn['K']])
-        dy_min, dy_max = dyn_all.min()*1.1, dyn_all.max()*1.1
-        _save_dxf('dxf/dynamic_forces.dxf', [
-            ("Pr", phi_deg, dn['P_r'], 5),
-            ("Pj", phi_deg, dn['P_j'], 3),
-            ("P_sigma", phi_deg, dn['P_sigma'], 1),
-            ("T", phi_deg, dn['T'], 6),
-            ("K", phi_deg, dn['K'], 4),
-        ], xr=(0, 720), yr=(dy_min, dy_max),
-           rect=(10, 10, 250, 180),
-           x_lab='φ, град ПКВ', y_lab='Сила, Н',
-           title='Динамика КШМ')
 
         self.print_dynamic_table()
         print('Динамический расчет завершен. Графики сохранены в svg/dynamic_forces.svg')
@@ -570,18 +538,6 @@ class DieselEngine:
         plt.savefig('svg/torque_diagram.svg', dpi=150)
         print(f'Диаграмма крутящего момента: svg/torque_diagram.svg')
         print(f'M_ср = {M_avg:.0f} Н·м, M_min = {M_min:.0f}, M_max = {M_max:.0f}, δ = {delta_M:.1f}%')
-
-        # DXF на интервал повторяемости
-        dxf_curves = [("M_kr", phi_60, M_sum, 5),
-                      ("M_avg", [0, theta], [M_avg, M_avg], 1)]
-        for k in range(i_cyl):
-            dxf_curves.append((f"Цил.{k+1}", phi_60, M_slices[k], 3))
-        mr_margin = (M_max - M_min) * 0.05
-        _save_dxf('dxf/torque_diagram.dxf', dxf_curves, xr=(0, theta),
-                  yr=(M_min - mr_margin, M_max + mr_margin),
-                  rect=(10, 10, 250, 150),
-                  x_lab='φ, град ПКВ', y_lab='M_кр, Н·м',
-                  title=f'Крутящий момент (Θ={theta}°)')
 
     def piston_calculation(self):
         """Расчет поршня (днище, перемычки, палец, юбка)"""
@@ -845,236 +801,94 @@ class DieselEngine:
         print(f"{'=' * 50}\n")
 
 
-_CLR = {'blue':5,'red':1,'green':3,'magenta':6,'cyan':4,'black':7,'gray':8}
-
-def _aci(c):
-    return c if isinstance(c, int) else _CLR.get(c, 7)
-
-def _mkdoc():
-    doc = ezdxf.new('AC1015')
-    doc.units = units.MM
-    return doc
-
-def _add_layers(doc, names, default_color=7):
-    for n in names:
-        doc.layers.add(n).color = default_color
-
-def _add_lw(msp, x, y, layer, color):
-    pts = [(float(xi), float(yi)) for xi, yi in zip(x, y)]
-    for i in range(len(pts) - 1):
-        msp.add_line(pts[i], pts[i+1], dxfattribs={'layer': layer, 'color': color})
-
-def _add_text(msp, text, pos, height, layer='text', color=7, halign=0, valign=0, rotation=0):
-    msp.add_text(text, dxfattribs={
-        'height': height, 'insert': pos, 'halign': halign,
-        'valign': valign, 'rotation': rotation, 'layer': layer, 'color': color})
-
-def _add_line(msp, p1, p2, layer='axes', color=7):
-    msp.add_line(p1, p2, dxfattribs={'layer': layer, 'color': color})
-
-def _save_dxf(filename, curves, xr=None, yr=None, rect=None,
-              x_lab='', y_lab='', title='', points=None):
-    doc = _mkdoc()
-    _add_layers(doc, ['axes', 'text'], default_color=7)
-    for c in curves:
-        if c[0] not in doc.layers:
-            doc.layers.add(c[0]).color = _aci(c[3])
-    msp = doc.modelspace()
-
-    if rect and xr and yr:
-        x0, y0, w, h = rect
-        x_min, x_max = xr
-        y_min, y_max = yr
-        _draw_axes_rect(msp, x0, y0, w, h, x_lab, y_lab, title, xr, yr)
-        if points:
-            for label, (px, py) in points.items():
-                lx = x0 + (px - x_min) / (x_max - x_min) * w
-                ly = y0 + (py - y_min) / (y_max - y_min) * h
-                _add_line(msp, (lx-1.5, ly), (lx+1.5, ly), 'text', 7)
-                _add_line(msp, (lx, ly-1.5), (lx, ly+1.5), 'text', 7)
-                _add_text(msp, label, (lx+2, ly+1), 3, 'text', 7)
-
-    for name, x, y, ci in curves:
-        ci = _aci(ci)
-        if rect and xr and yr:
-            xs = x0 + (np.array(x, float) - x_min) / (x_max - x_min) * w
-            ys = y0 + (np.array(y, float) - y_min) / (y_max - y_min) * h
-        else:
-            xs, ys = np.array(x, float), np.array(y, float)
-        _add_lw(msp, xs, ys, name, ci)
-
-    doc.header['$INSUNITS'] = 4
-    doc.saveas(filename)
-    print(f"DXF сохранён: {filename}")
-
-
-def _draw_ticks(msp, x0, y0, w, h, xr, yr, a):
-    n = 5
-    for i in range(n + 1):
-        t = i / n
-        if xr:
-            xp = x0 + t * w
-            _add_line(msp, (xp, y0-a*0.5), (xp, y0+a*0.5), 'axes', 7)
-            val = xr[0] + t*(xr[1]-xr[0])
-            _add_text(msp, f'{val:.3g}', (xp, y0-a*1.8), a*0.7, 'axes', 7, halign=1)
-        if yr:
-            yp = y0 + t * h
-            _add_line(msp, (x0-a*0.5, yp), (x0+a*0.5, yp), 'axes', 7)
-            val = yr[0] + t*(yr[1]-yr[0])
-            _add_text(msp, f'{val:.3g}', (x0-a*2, yp), a*0.7, 'axes', 7, halign=2, valign=2)
-
-
-def _draw_axes_rect(msp, x0, y0, w, h, x_lab, y_lab, title, xr=None, yr=None):
-    a = min(w, h) * 0.02
-    _add_line(msp, (x0, y0), (x0+w, y0), 'axes', 7)
-    _add_line(msp, (x0, y0), (x0, y0+h), 'axes', 7)
-    _add_line(msp, (x0+w, y0), (x0+w-3*a, y0-a), 'axes', 7)
-    _add_line(msp, (x0+w, y0), (x0+w-3*a, y0+a), 'axes', 7)
-    _add_line(msp, (x0, y0+h), (x0-a, y0+h-3*a), 'axes', 7)
-    _add_line(msp, (x0, y0+h), (x0+a, y0+h-3*a), 'axes', 7)
-    _draw_ticks(msp, x0, y0, w, h, xr, yr, a)
-    ht = max(a, 3)
-    if x_lab:
-        _add_text(msp, x_lab, (x0+w/2, y0-3*a), ht, 'axes', 7, halign=1)
-    if y_lab:
-        _add_text(msp, y_lab, (x0-a, y0+h/2), ht, 'axes', 7, halign=1, valign=2, rotation=90)
-    if title:
-        _add_text(msp, title, (x0+w/2, y0+h-a), ht*1.2, 'axes', 7, halign=1)
-
-
-def _draw_diagram(msp, curves, xr, yr, rect, x_lab, y_lab, title):
-    x0, y0, w, h = rect
-    x_min, x_max = xr
-    y_min, y_max = yr
-    _draw_axes_rect(msp, x0, y0, w, h, x_lab, y_lab, title, xr, yr)
-    for name, xd, yd, ci in curves:
-        xs = x0 + (np.array(xd, float)-x_min)/(x_max-x_min)*w
-        ys = y0 + (np.array(yd, float)-y_min)/(y_max-y_min)*h
-        _add_lw(msp, xs, ys, name, ci)
-
-
-def _draw_frame(msp, pw, ph):
-    l, r, t, b = 20, 5, 5, 5
-    for (x1,y1),(x2,y2) in [((l,b),(pw-r,b)),((pw-r,b),(pw-r,ph-t)),
-                             ((pw-r,ph-t),(l,ph-t)),((l,ph-t),(l,b))]:
-        _add_line(msp, (x1,y1), (x2,y2), 'frame', 7)
-
-
-def _draw_stamp(msp, x, y, w, h):
-    cols = [70, 25, 15, 10, 20, 25, 20]
-    rows = [15, 15, 10]
-    _add_lw(msp, [x, x+w, x+w, x, x], [y, y, y+h, y+h, y], 'stamp', 7)
-    cx = x
-    for cw in cols[:-1]:
-        cx += cw
-        _add_line(msp, (cx, y), (cx, y+h), 'stamp', 7)
-    cy = y
-    for rh in rows[:-1]:
-        cy += rh
-        _add_line(msp, (x, cy), (x+w, cy), 'stamp', 7)
-
-
-
 def _nearest_standard(value, standards):
     return min(standards, key=lambda x: abs(x - value))
 
 def save_a1_sheet(filename, engine):
     print('Формирование листа А1...')
-    doc = ezdxf.new('AC1015')
-    doc.units = units.MM
-    msp = doc.modelspace()
     d, res, dn = engine.data, engine.calc, engine.dyn
     ind = dn.get('ind', {})
-    _add_layers(doc, ['frame', 'stamp', 'axes', 'text', 'compression',
-                      'combustion', 'expansion', 'exhaust', 'gas_exchange',
-                      'p-phi', 'Pr', 'Pj', 'P_sigma', 'T', 'K',
-                      'M_kr', 'M_avg'], default_color=7)
 
-    _draw_frame(msp, 841, 594)
-    _draw_stamp(msp, 841 - 185 - 5, 5, 185, 40)
+    A1_W, A1_H = 841, 594  # мм
 
     # ── Масштабы по методике БНТУ ──
     pz_max = res['pz']
-    D_m = res['D'] / 10          # dm → m
-    S_mm = res['S-mm']
-    Vh = res['Vh']                # л
-    Fp_m2 = math.pi * D_m**2 / 4 # м²
-
-    # μp: высота pz ~120 мм → стандартный ряд
+    D_m = res['D'] / 10
+    Vh = res['Vh']
     STANDARD_MUP = [0.01, 0.02, 0.04, 0.05, 0.10]
     mu_p = _nearest_standard(pz_max / 120, STANDARD_MUP)
+    mu_V = Vh / 120
+    mu_alpha = 2.0
+    w_phi = 720 / mu_alpha
 
-    # μV: база 120 мм на полный рабочий объём Vh
-    mu_V = Vh / 120  # л/мм
+    fig = plt.figure(figsize=(A1_W / 25.4, A1_H / 25.4), dpi=150)
+    fig.patch.set_facecolor('white')
+    fs = 6.5
 
-    # μα: 2 °/мм (360 мм на 720° ПКВ)
-    mu_alpha = 2.0  # °/мм
+    def mmax(x, y):
+        return x / A1_W, y / A1_H
 
-    w_phi = 720 / mu_alpha  # 360 мм
-
-    # ═══════════════ 1. Индикаторная диаграмма p-V ═══════════════
+    # ─── 1. Индикаторная диаграмма p-V ───
     if ind and 'V' in ind:
         V_arr = ind['V']
         p_arr = ind['p']
         pm = max(p_arr.max(), ind['pz']) * 1.1
         V_max_plot = ind['Va'] * 1.05
-
         h_ind = pm / mu_p
         w_ind = V_max_plot / mu_V
-
-        xr_ind = (0, V_max_plot)
-        yr_ind = (0, pm)
         y_ind = 320
-        rect_ind = (30, y_ind, w_ind, h_ind)
 
+        ax = fig.add_axes([*mmax(30, y_ind), w_ind / A1_W, h_ind / A1_H])
         V_closed = np.append(V_arr, ind['Vc'])
         p_closed = np.append(p_arr, ind['pa'])
-        _draw_diagram(msp, [
-            ("cycle", V_closed, p_closed, 5),
-            ("gas_exchange", [ind['Va'], ind['Vc']], [ind['pr'], ind['pr']], 7),
-            ("gas_exchange", [ind['Vc'], ind['Va']], [ind['pa'], ind['pa']], 7),
-        ], xr_ind, yr_ind, rect_ind, 'Объем V, л', 'Давление p, МПа',
-            'Индикаторная диаграмма')
-        x0, y0, w, h = rect_ind
-        xmn, xmx = xr_ind
-        ymn, ymx = yr_ind
+        ax.plot(V_closed, p_closed, 'k-', linewidth=0.6)
+        ax.plot([ind['Va'], ind['Vc']], [ind['pr'], ind['pr']], 'k-', alpha=0.4)
+        ax.plot([ind['Vc'], ind['Va']], [ind['pa'], ind['pa']], 'k--', alpha=0.4)
         for label, px, py in [
-            ("a", ind['Va'], ind['pa']),
-            ("c", ind['Vc'], ind['pc']),
-            ("z'", ind['Vc'], ind['pz']),
-            ("z''", ind['Vz'], ind['pz']),
-            ("b", ind['Va'], ind['pb']),
-            ("r", ind['Vc'], ind['pr']),
+            ("a", ind['Va'], ind['pa']), ("c", ind['Vc'], ind['pc']),
+            ("z'", ind['Vc'], ind['pz']), ("z''", ind['Vz'], ind['pz']),
+            ("b", ind['Va'], ind['pb']), ("r", ind['Vc'], ind['pr']),
         ]:
-            lx = x0 + (px - xmn) / (xmx - xmn) * w
-            ly = y0 + (py - ymn) / (ymx - ymn) * h
-            _add_line(msp, (lx-1.5,ly), (lx+1.5,ly), 'text', 7)
-            _add_line(msp, (lx,ly-1.5), (lx,ly+1.5), 'text', 7)
-            _add_text(msp, label, (lx+3, ly+1), 3, 'text', 7)
+            ax.scatter(px, py, s=8, c='k', zorder=5)
+            ax.annotate(label, (px, py), textcoords="offset points", xytext=(3, 3), fontsize=5)
+        ax.set_xlim(0, V_max_plot)
+        ax.set_ylim(0, pm)
+        ax.set_xlabel('Объем V, л', fontsize=fs)
+        ax.set_ylabel('Давление p, МПа', fontsize=fs)
+        ax.set_title('Индикаторная диаграмма', fontsize=fs + 1, pad=3)
+        ax.tick_params(labelsize=5)
+        ax.grid(True, linestyle='--', alpha=0.3, linewidth=0.3)
 
-        _add_text(msp, f'Масштабы: μ_p = {mu_p:.3f} МПа/мм, μ_V = {mu_V:.5f} л/мм',
-                  (30, y_ind - 10), 3.5, 'text', 7)
+        fig.text(30 / A1_W, (y_ind - 10) / A1_H,
+                 f'Масштабы: μ_p = {mu_p:.3f} МПа/мм, μ_V = {mu_V:.5f} л/мм',
+                 fontsize=5.5)
 
-    # ═══════════════ 2. Диаграмма крутящего момента ═══════════════
+    # ─── 2. Крутящий момент ───
     if 'M_kr' in dn:
         theta = 720 // int(d['i'])
         phi_torque = np.arange(0, theta + 1)
         mk = dn['M_kr']
         ma = dn['M_avg']
         mk_min, mk_max = mk.min() * 1.05, mk.max() * 1.05
-        _draw_diagram(msp, [
-            ("M_kr", phi_torque, mk, 5),
-            ("M_avg", [0, theta], [ma, ma], 1),
-        ], (0, theta), (mk_min, mk_max),
-            (440, 300, 390, 264), 'φ, град ПКВ', 'M_кр, Н·м',
-            f'Крутящий момент (Θ={theta}°)')
 
-        mu_M = (mk.max() * 1.05 - mk.min() * 1.05) / 264
+        ax = fig.add_axes([*mmax(440, 300), 390 / A1_W, 264 / A1_H])
+        ax.plot(phi_torque, mk, 'k-', linewidth=0.8)
+        ax.axhline(ma, color='k', linestyle='--', linewidth=0.5)
+        ax.set_xlim(0, theta)
+        ax.set_xlabel('φ, град ПКВ', fontsize=fs)
+        ax.set_ylabel('M_кр, Н·м', fontsize=fs)
+        ax.set_title(f'Крутящий момент (Θ={theta}°)', fontsize=fs + 1, pad=3)
+        ax.tick_params(labelsize=5)
+        ax.set_xticks(np.arange(0, theta + 1, max(theta // 5, 1)))
+        ax.grid(True, linestyle='--', alpha=0.5, linewidth=0.3)
+
+        mu_M = (mk_max - mk_min) / 264
         mu_phi_torque = theta / 390
-        _add_text(msp, f'μ_M={mu_M:.2f} Н·м/мм  μ_φ={mu_phi_torque:.2f} °/мм',
-                  (440, 293), 2.5, 'text', 7)
+        fig.text(440 / A1_W, 293 / A1_H,
+                 f'μ_M={mu_M:.2f} Н·м/мм  μ_φ={mu_phi_torque:.2f} °/мм',
+                 fontsize=4.5)
 
-    # ═══════════════ 3. Удельные давления P_r, P_j, P_Σ (МПа) ═══════════════
+    # ─── 3. Удельные силы P_r, P_j, P_Σ ───
     if 'phi_deg' in dn:
         phi = dn['phi_deg']
         pr = dn['p_r_MPa']
@@ -1085,18 +899,23 @@ def save_a1_sheet(filename, engine):
         p_margin = max((p_hi - p_lo) * 0.08, 0.5)
         yr_p = (p_lo - p_margin, p_hi + p_margin)
         h_p = (yr_p[1] - yr_p[0]) / mu_p
-
         y_p_top = 315
         y_p_bot = y_p_top - h_p
-        _draw_diagram(msp, [
-            ("Pr", phi, pr, 5),
-            ("Pj", phi, pj, 3),
-            ("P_sigma", phi, ps, 1),
-        ], (0, 720), yr_p,
-            (30, y_p_bot, w_phi, h_p), '', 'p, МПа',
-            'Удельные силы P_r, P_j, P_Σ')
 
-        # ═══════════════ 4. Удельные T и K (МПа) ═══════════════
+        ax = fig.add_axes([*mmax(30, y_p_bot), w_phi / A1_W, h_p / A1_H])
+        ax.plot(phi, pr, 'b-', label='P_r', linewidth=0.6)
+        ax.plot(phi, pj, 'g--', label='P_j', linewidth=0.6)
+        ax.plot(phi, ps, 'r-.', label='P_Σ', linewidth=1)
+        ax.set_xlim(0, 720)
+        ax.set_ylim(*yr_p)
+        ax.set_ylabel('p, МПа', fontsize=fs)
+        ax.set_title('Удельные силы $P_r$, $P_j$, $P_Σ$', fontsize=fs + 1, pad=2)
+        ax.tick_params(labelsize=5)
+        ax.set_xticks(np.arange(0, 721, 180))
+        ax.legend(fontsize=4.5, loc='upper right', framealpha=0.8)
+        ax.grid(True, linestyle='--', alpha=0.3, linewidth=0.3)
+
+        # ─── 4. Удельные T и K ───
         t = dn['T_MPa']
         k = dn['K_MPa']
         all_tk = np.concatenate([t, k])
@@ -1104,21 +923,25 @@ def save_a1_sheet(filename, engine):
         tk_margin = max((tk_hi - tk_lo) * 0.08, 0.5)
         yr_tk = (tk_lo - tk_margin, tk_hi + tk_margin)
         h_tk = (yr_tk[1] - yr_tk[0]) / mu_p
-
         y_tk_top = y_p_bot - 5
         y_tk_bot = max(y_tk_top - h_tk, 50)
         h_tk_adj = y_tk_top - y_tk_bot
-        _draw_diagram(msp, [
-            ("T", phi, t, 6),
-            ("K", phi, k, 4),
-        ], (0, 720), yr_tk,
-            (30, y_tk_bot, w_phi, h_tk_adj), 'φ, град ПКВ', 'p, МПа',
-            'Тангенциальная T и нормальная K силы')
 
-    doc.header['$INSUNITS'] = 4
-    doc.header['$EXTMIN'] = (0, 0, 0)
-    doc.header['$EXTMAX'] = (841, 594, 0)
-    doc.saveas(filename)
+        ax = fig.add_axes([*mmax(30, y_tk_bot), w_phi / A1_W, h_tk_adj / A1_H])
+        ax.plot(phi, t, 'm-', label='T', linewidth=0.6)
+        ax.plot(phi, k, 'c--', label='K', linewidth=0.6)
+        ax.set_xlim(0, 720)
+        ax.set_ylim(*yr_tk)
+        ax.set_xlabel('φ, град ПКВ', fontsize=fs)
+        ax.set_ylabel('p, МПа', fontsize=fs)
+        ax.set_title('Тангенциальная $T$ и нормальная $K$ силы', fontsize=fs + 1, pad=2)
+        ax.tick_params(labelsize=5)
+        ax.set_xticks(np.arange(0, 721, 180))
+        ax.legend(fontsize=4.5, loc='upper right', framealpha=0.8)
+        ax.grid(True, linestyle='--', alpha=0.3, linewidth=0.3)
+
+    plt.savefig(filename, dpi=150)
+    plt.close()
     print(f"Готовый лист А1 -> {filename}")
 
 
@@ -1223,5 +1046,5 @@ if __name__ == "__main__":
         engine.calc_dynamic_forces()
         engine.plot_torque_diagram()
         engine.piston_calculation()
-        save_a1_sheet('dxf/sheet_a1.dxf', engine)
+        save_a1_sheet('svg/sheet_a1.svg', engine)
 
