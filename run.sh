@@ -36,5 +36,4 @@ python3 main.py
 
 echo ""
 echo "Готово! Результаты:"
-echo "  - svg/               векторные диаграммы"
-echo "  - dxf/               чертежи (DWG/DXF)"
+echo "  - svg/               чертежи (SVG)"
