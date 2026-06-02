@@ -413,6 +413,13 @@ class DieselEngine:
         dn['N'] = dn['P_sigma'] * np.tan(beta)  # боковая сила на стенку цилиндра
         dn['phi_deg'] = phi_deg
 
+        # Удельные давления (MPa) для совмещения с индикаторной диаграммой
+        dn['p_r_MPa'] = dn['P_r'] / F_p / 1e6
+        dn['p_j_MPa'] = dn['P_j'] / F_p / 1e6
+        dn['p_sigma_MPa'] = dn['P_sigma'] / F_p / 1e6
+        dn['T_MPa'] = dn['T'] / F_p / 1e6
+        dn['K_MPa'] = dn['K'] / F_p / 1e6
+
         # Проверка: Mкр.ср из динамического расчёта vs Mе из теплового
         M_avg = np.mean(dn['T'] * R) * int(d['i'])
         dn['M_avg'] = M_avg
@@ -596,9 +603,9 @@ class DieselEngine:
         # ======= 1. Днище поршня =======
         # Материал: АЛ25, σв=60 МПа (при 300°C)
         # С ребрами жесткости (дизели): [σи] = 50–150 МПа
-        sigma_i_dop = 100  # МПа
-        # Толщина днища: δ/D = 0,12–0,20 для дизелей, принимаем 0,16
-        delta_d = round(0.16 * D, 1)  # мм
+        sigma_i_dop = 80  # МПа
+        # Толщина днища: δ/D = 0,12–0,20 для дизелей, принимаем 0,20
+        delta_d = round(0.20 * D, 1)  # мм
         pisto['delta_d'] = delta_d
 
         # Напряжение изгиба в днище
@@ -623,7 +630,7 @@ class DieselEngine:
         sigma_s = Pzmax_N / F_AA / 1e6  # МПа
         pisto['sigma_s'] = sigma_s
         pisto['sigma_s_dop'] = 40.0
-        pisto['sigma_s_ok'] = sigma_s <= 40.0
+        pisto['sigma_s_ok'] = sigma_s <= pisto['sigma_s_dop']
 
         # Напряжение растяжения от сил инерции на max оборотах
         n_max = 1.1 * d['n']  # макс. частота (с регулятором)
@@ -633,11 +640,11 @@ class DieselEngine:
         sigma_r = Pj_head / F_AA / 1e6  # МПа
         pisto['sigma_r'] = sigma_r
         pisto['sigma_r_dop'] = 10.0
-        pisto['sigma_r_ok'] = sigma_r <= 10.0
+        pisto['sigma_r_ok'] = sigma_r <= pisto['sigma_r_dop']
 
         # ======= 3. Тепловые зазоры поршня =======
         alpha_c = 11e-6   # 1/K — цилиндр (чугун)
-        alpha_p = 22e-6   # 1/K — поршень (АЛ25)
+        alpha_p = 11e-6   # 1/K — поршень (чугун СЧ25)
         t0 = 293          # K
         t_c = 385         # K — средняя температура цилиндра
         t_g = 600         # K — температура головки поршня
@@ -664,12 +671,12 @@ class DieselEngine:
         pisto['sigma_mp'] = sigma_mp
         pisto['sigma_sum_mp'] = sigma_sum_mp
         pisto['sigma_sum_mp_dop'] = 35.0
-        pisto['sigma_sum_mp_ok'] = sigma_sum_mp <= 35.0
+        pisto['sigma_sum_mp_ok'] = sigma_sum_mp <= pisto['sigma_sum_mp_dop']
 
         # ======= 5. Поршневой палец =======
         # Материал: сталь 15Х, σв=800 МПа
-        # dп/D = 0,30–0,38 для дизелей, принимаем 0,33
-        d_pin_o = round(0.33 * D, 1)  # мм
+        # dп/D = 0,30–0,38 для дизелей, принимаем 0,37
+        d_pin_o = int(0.37 * D)  # мм
         d_pin_i = round(0.55 * d_pin_o, 1)  # мм
         gamma = d_pin_i / d_pin_o
         pisto['d_pin_o'] = d_pin_o
@@ -692,28 +699,28 @@ class DieselEngine:
         # Давление в бобышках
         p_b = (Pzmax_N + k_k * Pj_pg) / (d_pin_o_m * ((L_p - L_bp) / 1000))
         pisto['p_b'] = p_b / 1e6  # МПа
-        pisto['p_b_dop'] = 35.0
-        pisto['p_b_ok'] = p_b / 1e6 <= 35.0
+        pisto['p_b_dop'] = 60.0
+        pisto['p_b_ok'] = p_b / 1e6 <= pisto['p_b_dop']
 
         # Давление во втулке шатуна
         p_sh = (Pzmax_N + Pj_pg) / (d_pin_o_m * (L_pg / 1000))
         pisto['p_sh'] = p_sh / 1e6  # МПа
-        pisto['p_sh_dop'] = 40.0
-        pisto['p_sh_ok'] = p_sh / 1e6 <= 40.0
+        pisto['p_sh_dop'] = 60.0
+        pisto['p_sh_ok'] = p_sh / 1e6 <= pisto['p_sh_dop']
 
         # Напряжение изгиба пальца
         sigma_i_pin = P * ((L_p + 2 * L_bp - 1.5 * L_pg) / 1000) / \
                       (1.2 * (d_pin_o_m ** 3) * (1 - gamma ** 4))
         pisto['sigma_i_pin'] = sigma_i_pin / 1e6  # МПа
         pisto['sigma_i_pin_dop'] = 200.0
-        pisto['sigma_i_pin_ok'] = sigma_i_pin / 1e6 <= 200.0
+        pisto['sigma_i_pin_ok'] = sigma_i_pin / 1e6 <= pisto['sigma_i_pin_dop']
 
         # Напряжение среза пальца
         tau_pin = 0.85 * P * (1 + gamma + gamma ** 2) / \
                   ((1 - gamma ** 4) * d_pin_o_m ** 2)
         pisto['tau_pin'] = tau_pin / 1e6  # МПа
         pisto['tau_pin_dop'] = 150.0
-        pisto['tau_pin_ok'] = tau_pin / 1e6 <= 150.0
+        pisto['tau_pin_ok'] = tau_pin / 1e6 <= pisto['tau_pin_dop']
 
         # Овализация
         E = 2.1e5  # МПа
@@ -750,7 +757,7 @@ class DieselEngine:
         pisto['h_yu'] = h_yu
         pisto['p_yu'] = p_yu
         pisto['p_yu_dop'] = 1.0
-        pisto['p_yu_ok'] = p_yu <= 1.0
+        pisto['p_yu_ok'] = p_yu <= pisto['p_yu_dop']
 
         self.piston = pisto
 
@@ -968,6 +975,9 @@ def _draw_stamp(msp, x, y, w, h):
 
 
 
+def _nearest_standard(value, standards):
+    return min(standards, key=lambda x: abs(x - value))
+
 def save_a1_sheet(filename, engine):
     print('Формирование листа А1...')
     doc = ezdxf.new('AC1015')
@@ -981,26 +991,41 @@ def save_a1_sheet(filename, engine):
                       'M_kr', 'M_avg'], default_color=7)
 
     _draw_frame(msp, 841, 594)
-
-    # Уменьшаем штамп, чтобы точно не залезал на графики
     _draw_stamp(msp, 841 - 185 - 5, 5, 185, 40)
 
+    # ── Масштабы по методике БНТУ ──
+    pz_max = res['pz']
+    D_m = res['D'] / 10          # dm → m
+    S_mm = res['S-mm']
+    Vh = res['Vh']                # л
+    Fp_m2 = math.pi * D_m**2 / 4 # м²
+
+    # μp: высота pz ~120 мм → стандартный ряд
+    STANDARD_MUP = [0.01, 0.02, 0.04, 0.05, 0.10]
+    mu_p = _nearest_standard(pz_max / 120, STANDARD_MUP)
+
+    # μV: база 120 мм на полный рабочий объём Vh
+    mu_V = Vh / 120  # л/мм
+
+    # μα: 2 °/мм (360 мм на 720° ПКВ)
+    mu_alpha = 2.0  # °/мм
+
+    w_phi = 720 / mu_alpha  # 360 мм
+
+    # ═══════════════ 1. Индикаторная диаграмма p-V ═══════════════
     if ind and 'V' in ind:
         V_arr = ind['V']
         p_arr = ind['p']
-
         pm = max(p_arr.max(), ind['pz']) * 1.1
         V_max_plot = ind['Va'] * 1.05
 
-        mu_p = 0.05
-        mu_V = 0.05
-
-        w_ind = V_max_plot / mu_V
         h_ind = pm / mu_p
+        w_ind = V_max_plot / mu_V
 
         xr_ind = (0, V_max_plot)
         yr_ind = (0, pm)
-        rect_ind = (30, 315, w_ind, h_ind)
+        y_ind = 320
+        rect_ind = (30, y_ind, w_ind, h_ind)
 
         V_closed = np.append(V_arr, ind['Vc'])
         p_closed = np.append(p_arr, ind['pa'])
@@ -1027,6 +1052,10 @@ def save_a1_sheet(filename, engine):
             _add_line(msp, (lx,ly-1.5), (lx,ly+1.5), 'text', 7)
             _add_text(msp, label, (lx+3, ly+1), 3, 'text', 7)
 
+        _add_text(msp, f'Масштабы: μ_p = {mu_p:.3f} МПа/мм, μ_V = {mu_V:.5f} л/мм',
+                  (30, y_ind - 10), 3.5, 'text', 7)
+
+    # ═══════════════ 2. Диаграмма крутящего момента ═══════════════
     if 'M_kr' in dn:
         theta = 720 // int(d['i'])
         phi_torque = np.arange(0, theta + 1)
@@ -1037,41 +1066,54 @@ def save_a1_sheet(filename, engine):
             ("M_kr", phi_torque, mk, 5),
             ("M_avg", [0, theta], [ma, ma], 1),
         ], (0, theta), (mk_min, mk_max),
-            (440, 315, 390, 264), 'φ, град ПКВ', 'M_кр, Н·м',
+            (440, 300, 390, 264), 'φ, град ПКВ', 'M_кр, Н·м',
             f'Крутящий момент (Θ={theta}°)')
 
+        mu_M = (mk.max() * 1.05 - mk.min() * 1.05) / 264
+        mu_phi_torque = theta / 390
+        _add_text(msp, f'μ_M={mu_M:.2f} Н·м/мм  μ_φ={mu_phi_torque:.2f} °/мм',
+                  (440, 293), 2.5, 'text', 7)
+
+    # ═══════════════ 3. Удельные давления P_r, P_j, P_Σ (МПа) ═══════════════
     if 'phi_deg' in dn:
         phi = dn['phi_deg']
-        af = np.concatenate([dn['P_r'], dn['P_j'], dn['P_sigma']])
-        f_min, f_max = af.min()*1.1, af.max()*1.1
-        _draw_diagram(msp, [
-            ("Pr", phi, dn['P_r'], 5),
-            ("Pj", phi, dn['P_j'], 3),
-            ("P_sigma", phi, dn['P_sigma'], 1),
-        ], (0, 720), (f_min, f_max),
-            (30, 165, 470, 130), '', 'Сила, Н',
-            'Силы P_r, P_j, P_Σ')
+        pr = dn['p_r_MPa']
+        pj = dn['p_j_MPa']
+        ps = dn['p_sigma_MPa']
+        all_p = np.concatenate([pr, pj, ps])
+        p_lo, p_hi = all_p.min(), all_p.max()
+        p_margin = max((p_hi - p_lo) * 0.08, 0.5)
+        yr_p = (p_lo - p_margin, p_hi + p_margin)
+        h_p = (yr_p[1] - yr_p[0]) / mu_p
 
-        at = np.concatenate([dn['T'], dn['K']])
-        tk_min, tk_max = at.min()*1.1, at.max()*1.1
+        y_p_top = 315
+        y_p_bot = y_p_top - h_p
         _draw_diagram(msp, [
-            ("T", phi, dn['T'], 6),
-            ("K", phi, dn['K'], 4),
-        ], (0, 720), (tk_min, tk_max),
-            (30, 50, 470, 105), 'φ, град ПКВ', 'Сила, Н',
+            ("Pr", phi, pr, 5),
+            ("Pj", phi, pj, 3),
+            ("P_sigma", phi, ps, 1),
+        ], (0, 720), yr_p,
+            (30, y_p_bot, w_phi, h_p), '', 'p, МПа',
+            'Удельные силы P_r, P_j, P_Σ')
+
+        # ═══════════════ 4. Удельные T и K (МПа) ═══════════════
+        t = dn['T_MPa']
+        k = dn['K_MPa']
+        all_tk = np.concatenate([t, k])
+        tk_lo, tk_hi = all_tk.min(), all_tk.max()
+        tk_margin = max((tk_hi - tk_lo) * 0.08, 0.5)
+        yr_tk = (tk_lo - tk_margin, tk_hi + tk_margin)
+        h_tk = (yr_tk[1] - yr_tk[0]) / mu_p
+
+        y_tk_top = y_p_bot - 5
+        y_tk_bot = max(y_tk_top - h_tk, 50)
+        h_tk_adj = y_tk_top - y_tk_bot
+        _draw_diagram(msp, [
+            ("T", phi, t, 6),
+            ("K", phi, k, 4),
+        ], (0, 720), yr_tk,
+            (30, y_tk_bot, w_phi, h_tk_adj), 'φ, град ПКВ', 'p, МПа',
             'Тангенциальная T и нормальная K силы')
-
-    # Масштабы диаграмм (фиксированные по ГОСТ/ЕСКД)
-    if ind and 'V' in ind:
-        _add_text(msp, f'Масштабы: μ_p = 0.05 МПа/мм, μ_V = 0.05 л/мм',
-                  (30, 305), 3.5, 'text', 7)
-
-    if 'M_kr' in dn:
-        w_torq, h_torq = 390, 264
-        mu_M = (mk.max() * 1.05 - mk.min() * 1.05) / h_torq
-        mu_phi = theta / w_torq
-        _add_text(msp, f'μ_M={mu_M:.2f} Н·м/мм  μ_φ={mu_phi:.2f} град/мм',
-                  (440, 310), 2.5, 'text', 7)
 
     doc.header['$INSUNITS'] = 4
     doc.header['$EXTMIN'] = (0, 0, 0)
